@@ -15,6 +15,7 @@
 use App\Actions\Device\ValidateDeviceAndCreate;
 use App\Facades\DeviceCache;
 use App\Facades\LibrenmsConfig;
+use App\Models\AlertSchedule;
 use App\Models\AlertTemplate;
 use App\Models\AlertTemplateMap;
 use App\Models\Availability;
@@ -313,9 +314,60 @@ function get_device(Illuminate\Http\Request $request)
         $device['lat'] = $device->location?->lat;
         $device['lng'] = $device->location?->lng;
 
-        $host_id = get_vm_parent_id($device);
-        if (is_numeric($host_id)) {
-            $device = array_merge($device, ['parent_id' => $host_id]);
+        // Add VM parent info
+        try {
+            $host_id = get_vm_parent_id($device);
+            if (is_numeric($host_id)) {
+                $device['parent_id'] = $host_id;
+            }
+        } catch (\Exception $e) {
+            // VM parent lookup failed, skip
+        }
+
+        // Add device dependency (parent) information
+        $parents = DB::table('device_relationships')
+            ->join('devices', 'device_relationships.parent_device_id', '=', 'devices.device_id')
+            ->where('device_relationships.child_device_id', $device->device_id)
+            ->orderBy('devices.hostname')
+            ->pluck('devices.hostname')
+            ->toArray();
+
+        if (! empty($parents)) {
+            $device['dependency_parent_hostname'] = implode(',', $parents);
+            // Use DB::table() to avoid ambiguous table reference
+            $parent_ids = DB::table('device_relationships')
+                ->join('devices as parent_devices', 'device_relationships.parent_device_id', '=', 'parent_devices.device_id')
+                ->where('device_relationships.child_device_id', $device->device_id)
+                ->orderBy('parent_devices.hostname')
+                ->pluck('parent_devices.device_id')
+                ->toArray();
+            $device['dependency_parent_id'] = implode(',', $parent_ids);
+        }
+
+        // Add maintenance status and schedule information
+        $is_under_maintenance = $device->isUnderMaintenance();
+        $device['is_under_maintenance'] = $is_under_maintenance;
+        $maintenance_status = $device->getMaintenanceStatus();
+        if ($maintenance_status !== null) {
+            $device['maintenance_status'] = $maintenance_status->name;
+        }
+
+        // Get active maintenance schedules for this device
+        try {
+            $active_schedules = AlertSchedule::isActive()
+                ->whereHasMorph('alert_schedulable', [Device::class], function ($query) use ($device): void {
+                    $query->where('alert_schedulable_id', $device->device_id);
+                })
+                ->select('schedule_id', 'title', 'start', 'end', 'recurring', 'behavior')
+                ->orderBy('start')
+                ->get()
+                ->toArray();
+
+            if (! empty($active_schedules)) {
+                $device['maintenance_schedules'] = $active_schedules;
+            }
+        } catch (\Exception $e) {
+            // Maintenance schedule lookup failed, skip
         }
 
         return api_success([$device], 'devices');
@@ -410,6 +462,13 @@ function list_devices(Illuminate\Http\Request $request)
         if (is_numeric($host_id)) {
             $device['parent_id'] = $host_id;
         }
+
+        // Add maintenance status for this device
+        $device_model = Device::where('device_id', $device['device_id'])->first();
+        if ($device_model) {
+            $device['is_under_maintenance'] = $device_model->isUnderMaintenance();
+        }
+
         $devices[] = $device;
     }
 
