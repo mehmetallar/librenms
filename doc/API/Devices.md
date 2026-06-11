@@ -63,11 +63,29 @@ Output:
             "hostname": "localhost",
             ...
             "serial": null,
-            "icon": null
+            "icon": null,
+            "dependency_parent_id": "2,3",
+            "dependency_parent_hostname": "parent1.example.com,parent2.example.com",
+            "is_under_maintenance": false,
+            "maintenance_status": "None",
+            "maintenance_schedules": [
+                {
+                    "schedule_id": 1,
+                    "title": "Scheduled Maintenance",
+                    "start": "2024-01-01 02:00:00",
+                    "end": "2024-01-01 04:00:00",
+                    "recurring": 0,
+                    "behavior": 1
+                }
+            ]
         }
     ]
 }
 ```
+
+`dependency_parent_id` and `dependency_parent_hostname` are only present if the device has configured parent dependencies.
+`is_under_maintenance` and `maintenance_status` indicate the current maintenance state (None/SkipAlerts/MuteAlerts/RunAlerts).
+`maintenance_schedules` is only present if there are active scheduled maintenance entries for this device.
 
 ### `discover_device`
 
@@ -1319,7 +1337,10 @@ Output:
    "hostname": "localhost",
    ...
    "serial": null,
-   "icon": null
+   "icon": null,
+   "dependency_parent_id": "2,3",
+   "dependency_parent_hostname": "parent1.example.com,parent2.example.com",
+   "is_under_maintenance": false
   }
  ]
 }
@@ -1343,11 +1364,17 @@ Output:
    "hostname": "localhost",
    ...
    "serial": null,
-   "icon": null
+   "icon": null,
+   "dependency_parent_id": "2,3",
+   "dependency_parent_hostname": "parent1.example.com,parent2.example.com",
+   "is_under_maintenance": false
   }
  ]
 }
 ```
+
+`dependency_parent_id` and `dependency_parent_hostname` are only present if the device has configured parent dependencies.
+`is_under_maintenance` indicates whether the device is currently under scheduled maintenance.
 
 ### `device_under_maintenance`
 
